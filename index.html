@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Чек-лист ОТиПБ</title>
+    <title>Контроль ОТиПБ</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="style.css">
     <style>
-        /* Зона печатного бланка на экране устройства скрыта */
         #print-blank-zone { 
             display: none; 
             background: #fff; 
@@ -26,11 +25,38 @@
         .online-mode { background: #d4edda; color: #155724; }
         .offline-mode { background: #fff3cd; color: #856404; }
 
-        /* Стили нативной печати. Скрываем интерфейс чек-листа, не трогая body */
+        /* Элементы управления камерой в карточках */
+        .photo-input-container { margin-top: 12px; }
+        .photo-preview-grid { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+        .photo-preview-item { width: 70px; height: 70px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
+        
+        /* Сетка галереи в самом PDF файле (4 фото на страницу) */
+        .pdf-photo-grid { 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 15px; 
+            margin-top: 15px;
+        }
+        .pdf-photo-card { 
+            border: 1px solid #ccc; 
+            padding: 8px; 
+            text-align: center; 
+            box-sizing: border-box;
+            page-break-inside: avoid;
+        }
+        .pdf-photo-img { 
+            width: 100%; 
+            height: 180px; 
+            object-fit: cover; 
+            margin-bottom: 5px; 
+        }
+        .pdf-photo-desc { font-size: 12px; font-weight: bold; color: #333; }
+
         @media print {
             body { background: #fff; padding: 0; margin: 0; }
             .container, #step-1-form, #step-3-checklist, .network-status, h2 { display: none !important; }
             #print-blank-zone { display: block !important; }
+            .pdf-page-break { page-break-before: always; }
         }
     </style>
 </head>
@@ -85,10 +111,9 @@
     </div>
 </div>
 
-<!-- ОФИЦИАЛЬНАЯ ПЕЧАТНАЯ ФОРМА С ИСПРАВЛЕННОЙ ШАПКОЙ ДЛЯ СТАБИЛЬНОГО PDF -->
+<!-- ОФИЦИАЛЬНАЯ ПЕЧАТНАЯ ФОРМА С ТАБЛИЧНЫМ ФОРМАТИРОВАНИЕМ И ФОТОГАЛЕРЕЕЙ -->
 <div id="print-blank-zone">
     <div style="text-align: center; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 25px;">
-        <!-- ТЕГ ИЗМЕНЕН НА DIV, ЧТОБЫ CSS ОШИБОЧНО НЕ СКРЫВАЛ ЕГО ПРИ ПЕЧАТИ -->
         <div style="margin: 0; color: #2c3e50; font-size: 22px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">АКТ ПРОВЕРКИ СОБЛЮДЕНИЯ ТРЕБОВАНИЙ ОТиПБ</div>
     </div>
     
@@ -107,17 +132,22 @@
                 <th style="border: 1px solid #ddd; padding: 10px; width: 5%; text-align: center; font-size: 14px;">№</th>
                 <th style="border: 1px solid #ddd; padding: 10px; width: 20%; text-align: left; font-size: 14px;">Раздел</th>
                 <th style="border: 1px solid #ddd; padding: 10px; width: 45%; text-align: left; font-size: 14px;">Требование безопасности</th>
-                <th style="border: 1px solid #ddd; padding: 10px; width: 30%; text-align: left; font-size: 14px;">Коментарий</th>
+                <th style="border: 1px solid #ddd; padding: 10px; width: 30%; text-align: left; font-size: 14px;">Замечание инспектора</th>
             </tr>
         </thead>
         <tbody id="p-violations-tbody">
-            <!-- Строки генерируются динамически -->
+            <!-- Строки табличного акта -->
         </tbody>
     </table>
     
-    <div style="margin-top: 50px; padding-top: 20px; display: flex; justify-content: space-between; font-size: 14px; page-break-inside: avoid;">
+    <div style="margin-top: 40px; padding-top: 20px; display: flex; justify-content: space-between; font-size: 14px; page-break-inside: avoid;">
         <div>Подпись проверяющего: _____________________</div>
         <div>Подпись представителя подрядчика: _____________________</div>
+    </div>
+
+    <!-- БЛОК ПРИЛОЖЕНИЯ С ФОТОФИКСАЦИЕЙ (Динамически нарезается по 4 фото на лист) -->
+    <div id="pdf-gallery-wrapper">
+        <!-- Сюда JS вставит страницы фотофиксации -->
     </div>
 </div>
 
