@@ -1,4 +1,4 @@
-const CACHE_NAME = 'otipb-v4';
+const CACHE_NAME = 'otipb-v5';
 
 const ASSETS = [
   './',
