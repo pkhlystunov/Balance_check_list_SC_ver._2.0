@@ -122,25 +122,34 @@ function renderChecklist(data) {
         const btnRow = document.createElement('div'); 
         btnRow.className = 'btn-row';
         
+        // НАДЁЖНОЕ И БЕЗОПАСНОЕ СОЗДАНИЕ КНОПОК ЧЕРЕЗ DOM ДЛЯ ИСКЛЮЧЕНИЯ ЗАВИСАНИЙ
         const okBtn = document.createElement('button');
         okBtn.type = 'button';
         okBtn.className = 'btn btn-success';
         okBtn.textContent = 'Соответствует';
-        okBtn.onclick = function() { setResult(q.id, 'Соответствует', q.question, q.category, q.normative); };
+        okBtn.addEventListener('click', function() {
+            setResult(q.id, 'Соответствует', q.question, q.category, q.normative);
+        });
         
         const failBtn = document.createElement('button');
         failBtn.type = 'button';
         failBtn.className = 'btn btn-danger';
         failBtn.textContent = 'Нарушение';
-        failBtn.onclick = function() { setResult(q.id, 'Нарушение', q.question, q.category, q.normative); };
+        failBtn.addEventListener('click', function() {
+            setResult(q.id, 'Нарушение', q.question, q.category, q.normative);
+        });
         
         btnRow.appendChild(okBtn);
         btnRow.appendChild(failBtn);
         card.appendChild(btnRow);
         
-        card.innerHTML += '<input type="text" id="comment-' + q.id + '" class="comment-box" placeholder="Опишите детали нарушения...">';
+        const inp = document.createElement('input');
+        inp.type = 'text';
+        inp.id = 'comment-' + q.id;
+        inp.className = 'comment-box';
+        inp.placeholder = 'Опишите детали нарушения...';
+        card.appendChild(inp);
         
-        // Добавление блока прикрепления фото при нарушении
         const photoContainer = document.createElement('div');
         photoContainer.className = 'photo-input-container';
         photoContainer.id = 'photo-area-' + q.id;
@@ -154,7 +163,6 @@ function renderChecklist(data) {
     });
 }
 
-// Конвертация и оптимизация изображений на лету
 function handlePhotoUpload(input, questionId) {
     const previewGrid = document.getElementById('preview-' + questionId);
     previewGrid.innerHTML = "";
@@ -163,14 +171,13 @@ function handlePhotoUpload(input, questionId) {
     if (!item) return;
     item.photos = []; 
 
-    const files = Array.from(input.files).slice(0, 2); // Ограничение: до 2-х фото на 1 пункт
+    const files = Array.from(input.files).slice(0, 2);
     
     files.forEach(function(file) {
         const reader = new FileReader();
         reader.onload = function(event) {
             const img = new Image();
             img.onload = function() {
-                // Сжатие картинки через Canvas для экономии памяти телефона в офлайне
                 const canvas = document.createElement('canvas');
                 const MAX_WIDTH = 600;
                 let width = img.width;
@@ -189,7 +196,6 @@ function handlePhotoUpload(input, questionId) {
                 const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
                 item.photos.push(compressedBase64);
                 
-                // Вывод маленького превью инспектору в чек-листе
                 const prevImg = document.createElement('img');
                 prevImg.className = 'photo-preview-item';
                 prevImg.src = compressedBase64;
@@ -247,8 +253,6 @@ async function submitAuditWithOffline() {
     if (navigator.onLine) {
         btn.innerText = "⏳ Отправка в облако...";
         try {
-            // В Google-таблицу Base64 фотографии не шлем (чтобы не перегружать ячейки), только текст.
-            // Фото останутся локально в памяти сессии для сборки PDF.
             await fetch(API_URL, { method: 'POST', body: JSON.stringify(auditSession), headers: { 'Content-Type': 'text/plain' } });
             btn.innerText = "✅ Успешно сохранено!";
             document.getElementById('pdf-btn').disabled = false;
@@ -297,7 +301,6 @@ function downloadChecklistPdf() {
     
     const violationsOnly = auditSession.results.filter(function(r) { return r.status === 'Нарушение'; });
     
-    // 1. Формируем текстовую таблицу нарушений
     if (violationsOnly.length === 0) {
         const row = tbody.insertRow();
         const cell = row.insertCell();
@@ -314,7 +317,7 @@ function downloadChecklistPdf() {
             const cNum = row.insertCell();
             cNum.style.border = "1px solid #ddd"; cNum.style.padding = "8px"; cNum.style.textAlign = "center";
             cNum.textContent = index + 1;
-            item.pdfIndex = index + 1; // Запоминаем номер пункта для связи с фото
+            item.pdfIndex = index + 1; 
             
             const cCat = row.insertCell();
             cCat.style.border = "1px solid #ddd"; cCat.style.padding = "8px"; cCat.style.fontWeight = "bold"; cCat.style.fontSize = "13px";
@@ -335,11 +338,9 @@ function downloadChecklistPdf() {
         });
     }
 
-    // 2. ДИНАМИЧЕСКАЯ НАРЕЗКА ФОТОЛИСТОВ (СТРОГО ПО 4 ФОТО НА СТРАНИЦУ)
     const galleryWrapper = document.getElementById('pdf-gallery-wrapper');
-    galleryWrapper.innerHTML = ""; // очистка
+    galleryWrapper.innerHTML = ""; 
     
-    // Сбор всех загруженных фото
     let allUploadedPhotos = [];
     violationsOnly.forEach(function(item) {
         if (item.photos && item.photos.length > 0) {
@@ -359,14 +360,13 @@ function downloadChecklistPdf() {
         
         for (let i = 0; i < totalPhotos; i += photosPerPage) {
             const pageDiv = document.createElement('div');
-            pageDiv.className = "pdf-page-break"; // Принудительный разрыв страницы в PDF
+            pageDiv.className = "pdf-page-break"; 
             
             pageDiv.innerHTML = '<div style="margin-top:20px; font-size:16px; font-weight:bold; color:#2c3e50; border-bottom:1px solid #2c3e50; padding-bottom:5px;">ПРИЛОЖЕНИЕ К АКТУ. ФОТОФИКСАЦИЯ НАРУШЕНИЙ (Лист ' + (Math.floor(i/4) + 1) + ')</div>';
             
             const grid = document.createElement('div');
             grid.className = "pdf-photo-grid";
             
-            // Берем пачку из 4-х картинок для текущего листа
             let pagePhotos = allUploadedPhotos.slice(i, i + photosPerPage);
             pagePhotos.forEach(function(pData) {
                 const photoCard = document.createElement('div');
@@ -381,7 +381,6 @@ function downloadChecklistPdf() {
         }
     }
 
-    // Вызываем нативный менеджер печати
     window.print();
     
     setTimeout(function() {
