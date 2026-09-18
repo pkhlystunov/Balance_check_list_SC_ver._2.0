@@ -112,10 +112,12 @@ function renderChecklist(data) {
         const card = document.createElement('div');
         card.className = 'card'; 
         card.id = 'q-box-' + q.id;
-        card.innerHTML = '<div class="badge">' + q.category + '</div><p style="margin:5px 0 12px 0; font-size:16px; font-weight:600;">' + q.question + '</p>';
+        
+        let cardHtml = '<div class="badge">' + q.category + '</div><p style="margin:5px 0 12px 0; font-size:16px; font-weight:600;">' + q.question + '</p>';
         if(q.normative) {
-            card.innerHTML += '<div class="normative-text"><b>Норматив:</b> <span>' + q.normative + '</span></div>';
+            cardHtml += '<div class="normative-text"><b>Норматив:</b> <span>' + q.normative + '</span></div>';
         }
+        card.innerHTML = cardHtml;
         
         const btnRow = document.createElement('div'); 
         btnRow.className = 'btn-row';
@@ -136,27 +138,84 @@ function renderChecklist(data) {
         btnRow.appendChild(failBtn);
         card.appendChild(btnRow);
         
-        const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.id = 'comment-' + q.id;
-        inp.className = 'comment-box';
-        inp.placeholder = 'Опишите детали нарушения...';
-        card.appendChild(inp);
+        card.innerHTML += '<input type="text" id="comment-' + q.id + '" class="comment-box" placeholder="Опишите детали нарушения...">';
+        
+        // Добавление блока прикрепления фото при нарушении
+        const photoContainer = document.createElement('div');
+        photoContainer.className = 'photo-input-container';
+        photoContainer.id = 'photo-area-' + q.id;
+        photoContainer.style.display = 'none';
+        photoContainer.innerHTML = '<label style="margin-top:5px; font-size:13px; color:#555;">Прикрепить фото дефекта (до 2-х штук):</label>' +
+                                   '<input type="file" id="file-' + q.id + '" accept="image/*" multiple style="font-size:13px;" onchange="handlePhotoUpload(this, ' + q.id + ')">' +
+                                   '<div class="photo-preview-grid" id="preview-' + q.id + '"></div>';
+        card.appendChild(photoContainer);
         
         container.appendChild(card);
+    });
+}
+
+// Конвертация и оптимизация изображений на лету
+function handlePhotoUpload(input, questionId) {
+    const previewGrid = document.getElementById('preview-' + questionId);
+    previewGrid.innerHTML = "";
+    
+    let item = auditSession.results.find(function(r) { return r.id === questionId; });
+    if (!item) return;
+    item.photos = []; 
+
+    const files = Array.from(input.files).slice(0, 2); // Ограничение: до 2-х фото на 1 пункт
+    
+    files.forEach(function(file) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+                // Сжатие картинки через Canvas для экономии памяти телефона в офлайне
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 600;
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > MAX_WIDTH) {
+                    height *= MAX_WIDTH / width;
+                    width = MAX_WIDTH;
+                }
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                item.photos.push(compressedBase64);
+                
+                // Вывод маленького превью инспектору в чек-листе
+                const prevImg = document.createElement('img');
+                prevImg.className = 'photo-preview-item';
+                prevImg.src = compressedBase64;
+                previewGrid.appendChild(prevImg);
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
     });
 }
 function setResult(id, status, question, category, normative) {
     let item = auditSession.results.find(function(r) { return r.id === id; });
     if (!item) {
-        item = { id: id, question: question, category: category, normative: normative, status: status, comment: '' };
+        item = { id: id, question: question, category: category, normative: normative, status: status, comment: '', photos: [] };
         auditSession.results.push(item);
     } else { 
         item.status = status; 
     }
+    
     const comp = document.getElementById('comment-' + id);
+    const photoArea = document.getElementById('photo-area-' + id);
     if (comp) {
         comp.style.display = status === 'Нарушение' ? 'block' : 'none';
+    }
+    if (photoArea) {
+        photoArea.style.display = status === 'Нарушение' ? 'block' : 'none';
     }
     document.getElementById('q-box-' + id).style.borderLeftColor = status === 'Соответствует' ? 'var(--success)' : 'var(--danger)';
 }
@@ -188,6 +247,8 @@ async function submitAuditWithOffline() {
     if (navigator.onLine) {
         btn.innerText = "⏳ Отправка в облако...";
         try {
+            // В Google-таблицу Base64 фотографии не шлем (чтобы не перегружать ячейки), только текст.
+            // Фото останутся локально в памяти сессии для сборки PDF.
             await fetch(API_URL, { method: 'POST', body: JSON.stringify(auditSession), headers: { 'Content-Type': 'text/plain' } });
             btn.innerText = "✅ Успешно сохранено!";
             document.getElementById('pdf-btn').disabled = false;
@@ -208,7 +269,7 @@ function saveToOfflineQueue(session) {
     const btn = document.getElementById('submit-btn');
     btn.innerText = "💾 Сохранено офлайн!";
     document.getElementById('pdf-btn').disabled = false;
-    alert("⚠️ Нет связи. Акт надежно сохранен в памяти устройства. Вы можете нажать кнопку №2 и скачать PDF-акт.");
+    alert("⚠️ Нет связи. Акт сохранен на устройстве. Нажмите кнопку №2 для формирования PDF.");
 }
 
 async function syncOfflineQueue() {
@@ -236,6 +297,7 @@ function downloadChecklistPdf() {
     
     const violationsOnly = auditSession.results.filter(function(r) { return r.status === 'Нарушение'; });
     
+    // 1. Формируем текстовую таблицу нарушений
     if (violationsOnly.length === 0) {
         const row = tbody.insertRow();
         const cell = row.insertCell();
@@ -244,50 +306,86 @@ function downloadChecklistPdf() {
         cell.style.textAlign = "center";
         cell.style.color = "#27ae60";
         cell.style.fontWeight = "bold";
-        cell.textContent = "Нарушений в ходе проверки не выявлено. Объект соответствует нормам ОТиПБ.";
+        cell.textContent = "Нарушений в ходе проверки не выявлено.";
     } else {
         violationsOnly.forEach(function(item, index) {
             const row = tbody.insertRow();
             
             const cNum = row.insertCell();
-            cNum.style.border = "1px solid #ddd";
-            cNum.style.padding = "8px";
-            cNum.style.textAlign = "center";
+            cNum.style.border = "1px solid #ddd"; cNum.style.padding = "8px"; cNum.style.textAlign = "center";
             cNum.textContent = index + 1;
+            item.pdfIndex = index + 1; // Запоминаем номер пункта для связи с фото
             
             const cCat = row.insertCell();
-            cCat.style.border = "1px solid #ddd";
-            cCat.style.padding = "8px";
-            cCat.style.fontWeight = "bold";
-            cCat.style.fontSize = "13px";
+            cCat.style.border = "1px solid #ddd"; cCat.style.padding = "8px"; cCat.style.fontWeight = "bold"; cCat.style.fontSize = "13px";
             cCat.textContent = "[" + item.category + "]";
             
             const cQuest = row.insertCell();
-            cQuest.style.border = "1px solid #ddd";
-            cQuest.style.padding = "8px";
-            cQuest.style.fontSize = "13px";
-            
+            cQuest.style.border = "1px solid #ddd"; cQuest.style.padding = "8px"; cQuest.style.fontSize = "13px";
             if (item.normative) {
-                cQuest.textContent = item.question + " (Норматив: " + item.normative + ")";
+                cQuest.innerHTML = item.question + '<br><small style="color:#555;"><i>Норматив: ' + item.normative + '</i></small>';
             } else {
                 cQuest.textContent = item.question;
             }
             
             const cComm = row.insertCell();
-            cComm.style.border = "1px solid #ddd";
-            cComm.style.padding = "8px";
-            cComm.style.fontSize = "13px";
-            cComm.style.color = "#b33939";
-            cComm.style.backgroundColor = "#fdf2f2";
+            cComm.style.border = "1px solid #ddd"; cComm.style.padding = "8px"; cComm.style.fontSize = "13px";
+            cComm.style.color = "#b33939"; cComm.style.backgroundColor = "#fdf2f2";
             cComm.textContent = item.comment;
         });
     }
 
-    // Принудительно вызываем нативное системное окно вашего устройства (Сохранить в PDF)
+    // 2. ДИНАМИЧЕСКАЯ НАРЕЗКА ФОТОЛИСТОВ (СТРОГО ПО 4 ФОТО НА СТРАНИЦУ)
+    const galleryWrapper = document.getElementById('pdf-gallery-wrapper');
+    galleryWrapper.innerHTML = ""; // очистка
+    
+    // Сбор всех загруженных фото
+    let allUploadedPhotos = [];
+    violationsOnly.forEach(function(item) {
+        if (item.photos && item.photos.length > 0) {
+            item.photos.forEach(function(base64Src) {
+                allUploadedPhotos.push({
+                    src: base64Src,
+                    index: item.pdfIndex,
+                    category: item.category
+                });
+            });
+        }
+    });
+
+    if (allUploadedPhotos.length > 0) {
+        let photosPerPage = 4;
+        let totalPhotos = allUploadedPhotos.length;
+        
+        for (let i = 0; i < totalPhotos; i += photosPerPage) {
+            const pageDiv = document.createElement('div');
+            pageDiv.className = "pdf-page-break"; // Принудительный разрыв страницы в PDF
+            
+            pageDiv.innerHTML = '<div style="margin-top:20px; font-size:16px; font-weight:bold; color:#2c3e50; border-bottom:1px solid #2c3e50; padding-bottom:5px;">ПРИЛОЖЕНИЕ К АКТУ. ФОТОФИКСАЦИЯ НАРУШЕНИЙ (Лист ' + (Math.floor(i/4) + 1) + ')</div>';
+            
+            const grid = document.createElement('div');
+            grid.className = "pdf-photo-grid";
+            
+            // Берем пачку из 4-х картинок для текущего листа
+            let pagePhotos = allUploadedPhotos.slice(i, i + photosPerPage);
+            pagePhotos.forEach(function(pData) {
+                const photoCard = document.createElement('div');
+                photoCard.className = "pdf-photo-card";
+                photoCard.innerHTML = '<img class="pdf-photo-img" src="' + pData.src + '">' +
+                                       '<div class="pdf-photo-desc">Фото к пункту №' + pData.index + ' [' + pData.category + ']</div>';
+                grid.appendChild(photoCard);
+            });
+            
+            pageDiv.appendChild(grid);
+            galleryWrapper.appendChild(pageDiv);
+        }
+    }
+
+    // Вызываем нативный менеджер печати
     window.print();
     
     setTimeout(function() {
-        if (confirm("Выгрузка завершена! Очистить форму и начать новый обход?")) {
+        if (confirm("Выгрузка завершена! Очистить чек-лист для нового обхода?")) {
             location.reload();
         }
     }, 1000);
